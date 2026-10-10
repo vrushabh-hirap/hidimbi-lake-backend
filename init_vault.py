@@ -26,6 +26,11 @@ SCHEMA = os.path.join(HERE, "vault_schema.sql")
 # runs before every GRANT, otherwise the blanket "REVOKE ALL ON ALL FUNCTIONS"
 # wipes the specific grants that follow it.
 GRANTS = """
+-- CRITICAL: PostgreSQL grants EXECUTE to PUBLIC on every new function by
+-- default. Without this revoke, EVERY role (including vault_rotator) can call
+-- claim_by_selector and read a flag.
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA vault FROM PUBLIC;
+
 GRANT USAGE ON SCHEMA vault TO vault_flagger, vault_rotator;
 
 GRANT EXECUTE ON FUNCTION vault.claim_by_selector(text, text, bytea, inet)
@@ -121,13 +126,13 @@ def main() -> int:
                 "                WHERE rolname='vault_flagger') THEN "
                 "    CREATE ROLE vault_flagger LOGIN PASSWORD %s; "
                 "  ELSE "
-                "    ALTER ROLE vault_flagger PASSWORD %s; "
+                "    ALTER ROLE vault_flagger WITH LOGIN PASSWORD %s; "
                 "  END IF; "
                 "  IF NOT EXISTS (SELECT 1 FROM pg_roles "
                 "                WHERE rolname='vault_rotator') THEN "
                 "    CREATE ROLE vault_rotator LOGIN PASSWORD %s; "
                 "  ELSE "
-                "    ALTER ROLE vault_rotator PASSWORD %s; "
+                "    ALTER ROLE vault_rotator WITH LOGIN PASSWORD %s; "
                 "  END IF; END $$;",
                 (runtime_pw, runtime_pw, rotator_pw, rotator_pw))
 
