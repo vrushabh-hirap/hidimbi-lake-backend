@@ -15,6 +15,14 @@ set -e
 
 echo "[*] Lake API starting on :$PORT"
 
+# Render's Managed PostgreSQL does not run /docker-entrypoint-initdb.d, so the
+# Vault schema, roles and least-privilege grants are applied here on first
+# boot. Idempotent, and never blocks startup: if the database is unreachable
+# the service still comes up and answers 503 per request (fail closed).
+if command -v python >/dev/null 2>&1; then
+  python /app/init_vault.py || echo "[init-vault] skipped"
+fi
+
 # The internal index is only registered when HIDIMBI_EXPOSE_INTERNAL=1.
 if [ "${HIDIMBI_EXPOSE_INTERNAL:-1}" = "1" ]; then
   echo "[*] Keeper's internal index on :8100 (unpublished)"

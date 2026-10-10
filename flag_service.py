@@ -50,6 +50,7 @@ import psycopg2.errors
 import jwt as pyjwt
 from typing import Optional
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from pydantic import BaseModel
 
@@ -132,9 +133,18 @@ def vault_call(sql, params, on_reject=None):
     `on_reject` is called with the SQLSTATE primary message when the database
     raised a business rule (SELECTOR_MISMATCH, already claimed, ...). A true
     outage always raises VaultUnavailable and must fail closed.
+
+    NOTE: _pool_get() is INSIDE the try. It used to sit outside, which meant an
+    unreachable database escaped as an unhandled exception (HTTP 500) instead
+    of the intended 503 — so the "fail closed" guarantee silently did not hold.
     """
-    pool = _pool_get()
-    conn = pool.getconn()
+    try:
+        pool = _pool_get()
+        conn = pool.getconn()
+    except VaultUnavailable:
+        raise
+    except psycopg2.Error as exc:
+        raise VaultUnavailable(f"pool acquisition: {exc}") from exc
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params)

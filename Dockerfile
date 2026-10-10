@@ -31,6 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# The Vault schema, so the container can initialise Render's managed Postgres
+# itself (Render does not run /docker-entrypoint-initdb.d).
+COPY vault_schema.sql init_vault.py ./
+
 # server.py   = Lake API + Observatory + whistle + SSRF courier
 # flag_service.py = the internal Keeper's index served on :8100
 COPY server.py flag_service.py ./
