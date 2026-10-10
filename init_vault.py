@@ -47,9 +47,7 @@ GRANT SELECT, INSERT ON vault.flag_rejections TO vault_flagger;
 GRANT EXECUTE ON FUNCTION vault.rotate(text, text, integer) TO vault_rotator;
 
 ALTER TABLE vault.flag_instances ENABLE ROW LEVEL SECURITY;
-ALTER TABLE vault.flag_instances FORCE ROW LEVEL SECURITY;
 ALTER TABLE vault.flag_redemptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE vault.flag_redemptions FORCE ROW LEVEL SECURITY;
 """
 
 REVOKES = """

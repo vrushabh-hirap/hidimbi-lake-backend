@@ -323,8 +323,9 @@ async def get_flag(flag_id: str, authorization: str = Header(None), request: Req
 EXPOSE_INTERNAL = os.environ.get("HIDIMBI_EXPOSE_INTERNAL", "1") == "1"
 
 
-async def _internal_gate_impl(body: GateIn, authorization: Optional[str],
-                              request: Request):
+async def _internal_gate_impl(body: GateIn,
+                              authorization: Optional[str] = Header(None),
+                              request: Request = None):
     """The Keeper's internal index. Lives on a port that is never published;
     reached legitimately only by the Stage-21 SSRF through the Lake courier."""
     if not BACKEND_BEARER:
