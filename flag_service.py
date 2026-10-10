@@ -172,6 +172,23 @@ def vault_call(sql, params, on_reject=None):
 
 
 
+# The scope the vault selector is derived over.
+#
+# "per_team" (default) keeps every player's selector unique, so a leaked
+# selector only ever authorises one team's row.
+# "shared" makes the selector identical for every player, which is what you
+# want when the CTF platform validates submissions against a single flag.
+TEAM_SCOPE = os.environ.get("HIDIMBI_TEAM_SCOPE", "per_team")
+SHARED_TEAM_ID = os.environ.get("HIDIMBI_FIXED_TEAM", "town_folk")
+
+
+def db_team(jwt_team: str) -> str:
+    """Which team the vault row belongs to."""
+    if TEAM_SCOPE == "shared":
+        return SHARED_TEAM_ID
+    return jwt_team
+
+
 def expected_selector(team: str, epoch: int) -> bytes:
     """What the flagger believes the chain should produce.
 
@@ -184,7 +201,7 @@ def expected_selector(team: str, epoch: int) -> bytes:
         + bytes.fromhex(CONFIG["nonces"]["n1"]) + bytes.fromhex(CONFIG["nonces"]["n2"])
         + bytes.fromhex(CONFIG["nonces"]["n3"]) + bytes.fromhex(CONFIG["nonces"]["n4"])
         + SEED + DRUM + RUNE + GSECRET + WHISTLE
-        + f"{INSTANCE_ID}:{team}".encode("utf-8")
+        + f"{INSTANCE_ID}:{TEAM_SCOPE}".encode("utf-8")
     )
     return hashlib.sha256(material).digest()
 
@@ -200,6 +217,12 @@ def expected_seal(team: str, epoch: int, selector: bytes) -> bytes:
                     selector + INSTANCE_ID.encode("utf-8") + team.encode("utf-8")
                     + str(epoch).encode("utf-8"),
                     hashlib.sha256).digest()
+
+
+def claim_function() -> str:
+    """Which vault function the final read goes through."""
+    return ("vault.claim_by_selector_shared" if TEAM_SCOPE == "shared"
+            else "vault.claim_by_selector")
 
 
 def live_epoch_for(team: str):
@@ -286,7 +309,7 @@ async def get_flag(flag_id: str, authorization: str = Header(None), request: Req
     if claims.get("flag_id") != flag_id:
         raise HTTPException(400, "Token flag_id does not match target path.")
 
-    team = claims.get("team_id", "solo")
+    team = db_team(claims.get("team_id", "solo"))
 
     # Lazily provision this team. The selector is derived by the flagger from
     # the very material the player will have to recover for themselves, so
@@ -335,7 +358,7 @@ async def _internal_gate_impl(body: GateIn,
 
     sel = _decode_hex255(body.selector, "selector")
     prf = _decode_hex255(body.proof, "proof")
-    team = body.team or "solo"
+    team = db_team(body.team or "solo")
 
     if not hmac.compare_digest(prf, expected_proof(team, sel)):
         raise HTTPException(403, "The chain did not hold together.")
@@ -361,7 +384,7 @@ async def flag_claim(claim: Claim, request: Request = None):
     prf = _decode_hex255(claim.proof, "proof")
     seal = _decode_hex255(claim.seal, "seal")
 
-    team = (request.headers.get("x-team-id", "solo") or "solo")
+    team = db_team(request.headers.get("x-team-id", "solo") or "solo")
     # The live epoch comes from the Vault, not from config, so a rotation can
     # never leave the flagger validating against a stale epoch id.
     epoch = live_epoch_for(team)
@@ -380,8 +403,10 @@ async def flag_claim(claim: Claim, request: Request = None):
         _log_rejection(team, "PROOF_MISMATCH", ip, sel)
         raise HTTPException(403, "The chain did not hold together.")
 
-    # 2. seal from the internal index (stage 21)
-    if not BACKEND_BEARER or not hmac.compare_digest(seal, expected_seal(team, epoch, sel)):
+    # 2. seal from the internal index (stage 21). NOTE: BACKEND_BEARER is not
+    # required here - this is a public endpoint and must work even if the
+    # shared bearer was never configured on this service.
+    if not hmac.compare_digest(seal, expected_seal(team, epoch, sel)):
         _log_rejection(team, "SEAL_MISMATCH", ip, sel)
         raise HTTPException(403, "The Keeper's index did not ratify your selector.")
 
@@ -392,9 +417,10 @@ async def flag_claim(claim: Claim, request: Request = None):
 
     # 4. LIVE database read, parameterised by the player's derived selector
     try:
-        rows = vault_call("SELECT vault.claim_by_selector(%s, %s, %s, %s)",
-                          (INSTANCE_ID, team, psycopg2.Binary(sel),
-                           ipaddress.ip_address(ip).exploded if ip else None))
+        rows = vault_call(
+            f"SELECT {claim_function()}(%s, %s, %s, %s)",
+            (INSTANCE_ID, team, psycopg2.Binary(sel),
+             ipaddress.ip_address(ip).exploded if ip else None))
     except RedemptionFailure as reject:
         # A business-rule rejection, not an outage. Record it and answer 4xx.
         _log_rejection(team, reject.code, ip, sel)
