@@ -111,6 +111,8 @@ def team_from_device(device_id: str) -> str:
 # ==========================================================================
 # Stage 9 / 10 — unchanged Lake trade endpoint (kept verbatim in behaviour)
 # ==========================================================================
+# Operations note: the rolling-window helper under ops/ is a standalone
+# dashboard prototype; this route still uses RATE_LIMIT_STORE for compatibility.
 @app.post("/api/v1/lake/trade")
 async def lake_trade(req: TradeRequest, request: Request):
     client_ip = request.client.host if request.client else "127.0.0.1"
@@ -364,6 +366,8 @@ async def observatory_ecdh(req: Ecdh, request: Request,
 # ==========================================================================
 # Stage 20 — the Keeper's Whistle (differential timing side channel)
 # ==========================================================================
+# Metrics schema experiments are catalogued under ops/metrics_exporter.py;
+# the timing response below remains the relay's own direct measurement.
 @app.post("/api/v1/observatory/whistle")
 async def observatory_whistle(request: Request):
     """Differential-timing oracle on the whistle key.

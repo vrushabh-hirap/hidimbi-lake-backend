@@ -1,0 +1,10 @@
+{
+  "service": "backend_lake",
+  "dashboard": "https://ops.invalid/hidimbi-town",
+  "metrics_namespace": "hidimbi_demo",
+  "window_limit": 120,
+  "window_seconds": 60,
+  "webhook_origin": "https://hooks.invalid/town",
+  "cache_ttl_seconds": 300,
+  "demo_hmac_salt": "not-a-production-secret-7c19a3d5"
+}
